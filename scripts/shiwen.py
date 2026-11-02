@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
-def doctor() -> int:
+def doctor(*, require_browser: bool = False) -> int:
     dependencies = {name: importlib.util.find_spec(name) is not None for name in ("httpx", "lxml")}
     ready = sys.version_info >= (3, 10) and all(dependencies.values())
     report = {
@@ -25,15 +25,30 @@ def doctor() -> int:
     if all(dependencies.values()):
         from wxrc.browser import playwright_available
         report["optional_playwright"] = playwright_available()
-    if not ready:
+    if require_browser:
+        report["browser_ready"] = False
+        if report.get("optional_playwright"):
+            try:
+                from playwright.sync_api import sync_playwright
+                with sync_playwright() as pw:
+                    report["chromium_executable"] = pw.chromium.executable_path
+                    report["browser_ready"] = Path(pw.chromium.executable_path).is_file()
+            except Exception as exc:
+                report["browser_error"] = str(exc)
+        if not report["browser_ready"]:
+            report["browser_next_step"] = "在当前 Python 环境安装 requirements-browser.txt，再运行 python -m playwright install chromium"
+        ready = ready and report["browser_ready"]
+    if not report["ready"]:
         report["next_step"] = "使用 Python 3.10+；在此源码目录的独立虚拟环境中安装 requirements.txt，然后用该环境的 Python 运行本脚本。"
+    report["core_ready"] = report["ready"]
+    report["ready"] = ready
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if ready else 2
 
 
 def main() -> int:
-    if sys.argv[1:] == ["doctor"]:
-        return doctor()
+    if sys.argv[1:] in (["doctor"], ["doctor", "--browser"]):
+        return doctor(require_browser="--browser" in sys.argv)
     if sys.argv[1:] == ["--version"]:
         # 版本从源码声明读取，避免引入需要运行依赖的包初始化。
         import ast

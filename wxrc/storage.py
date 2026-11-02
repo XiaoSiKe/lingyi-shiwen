@@ -39,3 +39,36 @@ def atomic_write(path: Path, content: str | bytes, *, private: bool = False) -> 
     finally:
         if os.path.exists(temp):
             os.unlink(temp)
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def output_lock(directory):
+    """CLI 输出目录互斥；进程退出时由操作系统释放，不靠删除锁文件恢复。"""
+    root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
+    with (root / '.shiwen.lock').open('a+b') as lock:
+        lock.seek(0)
+        if not lock.read(1):
+            lock.write(b'0')
+            lock.flush()
+        lock.seek(0)
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise ValueError('该输出目录已有任务运行，请等待结束或使用另一目录') from exc
+        try:
+            yield
+        finally:
+            lock.seek(0)
+            if os.name == 'nt':
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)

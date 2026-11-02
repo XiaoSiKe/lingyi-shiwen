@@ -26,3 +26,6 @@ cursor.json
 raw.json
 *.log
 *.zip
+
+.shiwen.lock
+run-report.json

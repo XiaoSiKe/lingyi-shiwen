@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+from contextlib import nullcontext
 import argparse
 import json
 import sys
@@ -17,6 +18,7 @@ from .getmsg import Cursor, ProfileCrawler
 from .limiter import AdaptivePacer, CircuitBreaker
 from .proxy_pool import ProxyNode, ProxyPool
 from .session import BreakerOpen, NoIdentity, RiskEngine, RiskEngineError
+from .storage import output_lock
 from .security import redact
 from .mp_admin import AdminError
 
@@ -246,6 +248,7 @@ def cmd_admin(args: argparse.Namespace) -> int:
 
     text_run = TextRun(engine, out, pause=(0.5, 1.2)) if args.text else None
     n = 0
+    body_failed = 0
     try:
         with index.open("a", encoding="utf-8") as fh:
             for item in client.iter_published(max_pages=args.max_pages, since=since, until=until):
@@ -257,14 +260,17 @@ def cmd_admin(args: argparse.Namespace) -> int:
                     f"{item.title[:36]}"
                 )
                 if text_run is not None and item.url:
-                    page = engine.get(item.url, referer="https://mp.weixin.qq.com/", expect="html")
-                    if page.verdict.ok:
-                        from .article import parse_article
-
-                        art = parse_article(page.text, page.final_url)
-                        art.title = art.title or item.title
-                        art.publish_ts = art.publish_ts or item.publish_ts
-                        text_run.save(art, item.url)
+                    cached = text_run.cached_result(item.url)
+                    if cached:
+                        continue
+                    art, error = text_run.fetch(item.url)
+                    if art is None:
+                        body_failed += 1
+                        print(redact(f"正文失败：{item.title}：{error}"))
+                        continue
+                    art.title = art.title or item.title
+                    art.publish_ts = art.publish_ts or item.publish_ts
+                    text_run.save(art, item.url)
     except AdminError as exc:
         print(f"后台报错：{exc}")
         return 3
@@ -277,8 +283,8 @@ def cmd_admin(args: argparse.Namespace) -> int:
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
         print(f"留言：{sum(len(r['comments']) for r in rows)} 条 / {len(rows)} 篇 -> {cpath}")
 
-    print(json.dumps({"items": n, "index": str(index)}, ensure_ascii=False))
-    return 0 if n else 1
+    print(json.dumps({"items": n, "body_failed": body_failed, "index": str(index)}, ensure_ascii=False))
+    return 0 if n and not body_failed else 1
 
 
 def cmd_search(args: argparse.Namespace) -> int:
@@ -336,9 +342,6 @@ def cmd_text(args: argparse.Namespace) -> int:
             for line in Path(args.urls).read_text("utf-8", errors="replace").splitlines()
             if line.strip() and not line.strip().startswith("#")
         ]
-    if not urls:
-        print("没有 URL：用 --url 或 --urls")
-        return 2
 
     from .textmode import TextRun
 
@@ -347,10 +350,21 @@ def cmd_text(args: argparse.Namespace) -> int:
         Path(args.out),
         pause=(float(args.pause[0]), float(args.pause[1])),
         save_raw=args.raw,
+        force=args.force,
     )
+    if args.retry_failed:
+        urls += run.retry_urls()
+    if not urls:
+        if args.retry_failed:
+            print("最近一次任务没有失败或未处理链接")
+            return 0
+        print("没有待处理 URL：用 --url、--urls 或 --retry-failed")
+        return 2
 
     def show(res) -> None:
-        if res.ok:
+        if res.skipped:
+            print(f"SKIP  已归档：{res.path}")
+        elif res.ok:
             print(f"OK   {res.chars:>5}字  {res.account} · {res.title[:38]}  -> {res.path}")
         else:
             print(f"FAIL             {res.url[:70]}  {res.error}")
@@ -455,6 +469,8 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--urls", default="", help="URL 文件，一行一个，# 开头跳过")
     t.add_argument("--out", default="./text-out")
     t.add_argument("--config", default="", help="可选：复用其中的代理/节流/浏览器配置")
+    t.add_argument("--force", action="store_true", help="重新抓取已有正文")
+    t.add_argument("--retry-failed", action="store_true", help="从同一输出目录报告中恢复失败与未处理链接")
     t.add_argument("--raw", action="store_true", help="同时保存正文 HTML")
     t.add_argument("--pause", nargs=2, type=float, default=(1.5, 3.5), help="篇间停顿区间（秒）")
     t.set_defaults(func=cmd_text)
@@ -465,7 +481,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
     try:
-        return int(args.func(args) or 0)
+        with output_lock(args.out) if getattr(args, "out", None) else nullcontext():
+            return int(args.func(args) or 0)
     except (ValueError, OSError) as exc:
         print(redact(f"输入或环境错误：{exc}"), file=sys.stderr)
         return 2

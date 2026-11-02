@@ -22,6 +22,18 @@ python scripts/shiwen.py text --url "https://mp.weixin.qq.com/s/文章标识" --
 python scripts/shiwen.py text --urls "/资料/urls.txt" --out "/资料/公众号"
 ```
 
+同一输出目录默认复用成功索引，只有文件仍存在才跳过；`--raw` 所需文件缺失时补采。用 `--force` 强制重新获取。
+
+```bash
+python scripts/shiwen.py text --out "/资料/公众号" --retry-failed
+python scripts/shiwen.py text --urls "/资料/urls.txt" --out "/资料/公众号" --force
+python scripts/shiwen.py doctor --browser
+```
+
+`run-report.json` 记录状态、成功/跳过/失败数量、逐项结果和未处理链接。中断后 `--retry-failed` 读取同目录报告；完成后再次提交原链接清单会跳过已有产物。报告描述最近一次任务，JSONL 索引保留成功写入记录。CLI 对同一输出目录使用进程锁；直接通过 Python API 调用的开发者需自行协调并发。
+
+`doctor --browser` 检查 Playwright 是否可导入及其默认 Chromium 可执行文件是否存在，不等同于真实扫码或联网验证；缺少依赖或浏览器时返回退出码 2 和准备步骤。
+
 URL 文件每行一个链接，空行与 `#` 开头的行会跳过。输出 `账号/日期_标题_唯一标识.md`、`index.jsonl`；`--raw` 增加 `raw/账号/日期_标题_唯一标识.html`。HTML 为提取后的正文片段，不是完整 HTTP 响应。
 
 ## 账号识别与搜索抽样
@@ -65,7 +77,7 @@ python scripts/shiwen.py crawl --config "/私有目录/shiwen-config.json" --sin
 
 `--limit` 限制本次交给归档层的文章数，失败补采也计入；列表页默认上限为 50。`--dry-run` 只枚举清单；`--no-resume` 重新枚举列表，已成功归档的正文仍会去重。默认恢复同日期范围的任务；换日期范围或使用旧版游标会重新枚举，成功索引继续有效。
 
-`crawl` 会保留失败的元信息记录，下一次运行先补采。`text` 和 `admin --text` 使用稳定文件名，但目前没有 `crawl` 的持久任务恢复队列；重复运行可能追加索引记录。不要把这些模式描述成同一套增量调度系统。
+`crawl` 会保留失败的元信息记录，下一次运行先补采。`text` 使用运行报告恢复失败与未处理链接；`admin --text` 复用正文成功索引，重新枚举后台列表时跳过已保存正文。后台清单仍会追加快照记录，尚无后台列表持久任务队列。
 
 ## 管理员后台
 
