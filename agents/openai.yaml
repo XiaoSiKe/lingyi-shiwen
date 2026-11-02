@@ -1,0 +1,6 @@
+interface:
+  display_name: "零一拾文 · 公众号自适应采集引擎"
+  short_description: "调用本地核心源码，采集、解析并归档公众号文章，支持断点恢复和失败补采。"
+  icon_large: "./assets/logo.svg"
+  brand_color: "#176B60"
+  default_prompt: "使用 $lingyi-shiwen 将这些公众号文章采集为 Markdown，按账号和日期归档，并报告完成情况。"

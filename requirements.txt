@@ -1,0 +1,5 @@
+# 零一拾文核心源码运行依赖；无需安装本项目。
+httpx>=0.27
+lxml>=5.0
+
+# 可选浏览器与开发验证，见 references/commands.md 和 requirements-dev.txt。

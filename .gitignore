@@ -1,0 +1,28 @@
+# Local environments / caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+# Local credentials / browser state
+config.json
+accounts*.json
+admin*.json
+.env
+.env.*
+!.env.example
+.browser-profile/
+.browser-profiles/
+browser-profiles/
+AppData/
+# Collected content and diagnostic payloads
+archive/
+text-out/
+search-out/
+admin-out/
+private/
+*.jsonl
+cursor.json
+raw.json
+*.log
+*.zip
