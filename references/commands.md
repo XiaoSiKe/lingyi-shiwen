@@ -69,30 +69,28 @@ python scripts/shiwen.py crawl --config "/私有目录/shiwen-config.json" --sin
 
 ## 管理员后台
 
-需要用户管理目标公众号，并已单独提供可用的「零一智译 browser-core」。Node、Chrome 和内核就绪后：
+需要用户管理目标公众号。浏览器能力使用标准 Playwright，先在独立虚拟环境准备依赖与 Chromium：
 
 ```bash
-python scripts/shiwen.py admin-login --core "/本地/零一智译/browser-core" --save "/私有目录/shiwen-admin.json"
-python scripts/shiwen.py admin --session "/私有目录/shiwen-admin.json" --since 2026-01-01 --until 2026-11-02 --max-pages 100 --out "/资料/后台归档" --text --comments
+python -m pip install -r requirements-browser.txt
+python -m playwright install chromium
+python scripts/shiwen.py admin-login --save "/私有目录/shiwen-admin.json"
+python scripts/shiwen.py admin --session "/私有目录/shiwen-admin.json" --out "/资料/后台归档" --text --comments
 ```
 
-用户在弹出的浏览器中扫码。会话文件包含后台 Cookie 和 token，保存在仓库外；POSIX 文件权限为 `0600`。Windows 上还需由用户的目录 ACL 控制访问。
+用户亲自扫码。默认使用 Playwright Chromium；已有 Chrome 或 Edge 可用 `--browser-channel chrome` 或 `msedge`。登录会话文件在 POSIX 上设为 `0600`，保存到仓库外；浏览器个人资料保存在系统应用数据目录。
 
-后台默认最多扫描 20 页；`--max-pages` 是显式请求上限，达到上限不能宣称扫描完整。阅读/点赞字段以后台实际返回为准；`--comments` 只拉一页最新留言（最多请求 20 条），不是全部历史留言。
-
-可选 `--dump-raw "/私有目录/response.json"` 保存第一页响应用于字段校准。该文件可能含私有后台数据，不提交到 Git。
+后台默认最多扫描 20 页，可用 `--max-pages` 调整；达到上限不能宣称扫描完整。`--comments` 只拉一页最新留言。`--dump-raw` 的后台原始响应可能含私有数据，不提交到 Git。
 
 ## 浏览器兜底
 
-公开正文采集默认关闭浏览器。需要时在配置中指定：
+公开正文默认关闭浏览器，需要时在配置中指定：
 
 ```json
-{"browser": {"engine": "kernel", "core_path": "/本地/零一智译/browser-core", "headless": false, "wait_human_ms": 90000}}
+{"browser": {"engine": "playwright", "chrome": "chromium", "headless": false, "wait_human_ms": 90000}}
 ```
 
-`auto` 会在可用时选内核，否则尝试已配置的 Playwright；`playwright` 需要另行准备 Python 依赖及浏览器。管理员扫码使用内核桥，不走 Playwright 替代流程。
-
-浏览器兜底仅用于匿名 GET 正文页，继承当前出口。显式账号接口不会通过不带相同会话的浏览器重放；内核不支持带认证的代理时暂停，不改走直连。浏览器验证 Cookie 目前保留在浏览器会话，不会自动回灌 HTTP 客户端。
+`auto` 在已安装 Playwright 时启用，`off` 关闭。只有匿名 GET 正文使用浏览器兜底，继承当前网络出口；请求导航失败会报告失败，不把空页面当作 HTTP 200。需要用户验证时使用有窗口模式，用户亲自完成验证。
 
 ## 离线解析与状态
 
@@ -105,6 +103,6 @@ python scripts/shiwen.py snapshot --config "/私有目录/shiwen-config.json"
 
 ## 停止与结果解释
 
-退出码 `0` 表示命令按自身成功规则结束，`1` 为无结果或业务失败，`2` 为输入/环境问题，`3` 为会话、配额、熔断或出口等导致的暂停。`crawl` 仍需查看最终 `stats.failed` 和索引状态；退出码不能代替数据完整性报告。
+退出码 `0` 表示命令按自身成功规则结束，`1` 为无结果、部分失败或业务失败，`2` 为输入/环境问题，`3` 为会话、配额、熔断或出口等导致的暂停。`crawl` 仍需查看最终 `stats.failed` 和索引状态；退出码不能代替数据完整性报告。
 
 `status=ok` 表示正文可用，`deleted` 表示确认不可用，`meta_only` 表示只留下元信息、需要补采。互动数据同时看 `metrics_ok` 和 `metrics_reason`；数值缺省不等于真实统计为零。

@@ -305,6 +305,8 @@ class MetricsClient:
             )
         except Exhausted:
             return None
+        if reply.status >= 400 or reply.status <= 0:
+            return {"ret": 1, "errmsg": reply.verdict.reason or f"HTTP {reply.status}"}
         if reply.payload is None:
             return None
         return reply.payload

@@ -135,40 +135,10 @@ def main() -> int:
     else:
         out["steps"]["metrics_session"] = "跳过：未提供 --uin/--key（互动数据需要会话）"
 
-    # ---- 4) 可选：指纹浏览器 ---- #
     if args.browser:
-        from wxrc.kernel_bridge import KernelBridge
-
-        bridge = KernelBridge(headless=args.headless, logger=lambda _m: None)
-        try:
-            data = bridge.open(args.url, profile_key="live-probe", wait_human_ms=0, total_timeout=180)
-            dom = bridge.evaluate(
-                """(() => {
-                  const pick = (s) => { const n = document.querySelector(s); return n ? n.innerText.trim() : null; };
-                  return {
-                    read: pick('#js_read_area') || pick('.read_num'),
-                    like: pick('#js_like_num') || pick('.like_num'),
-                    comments: document.querySelectorAll('.comment_item, .js_cmt_item').length,
-                    readNumVar: (typeof read_num !== 'undefined') ? read_num : null,
-                    webdriver: navigator.webdriver,
-                    ua: navigator.userAgent.slice(0, 60),
-                  };
-                })()"""
-            )
-            out["steps"]["browser"] = {
-                "status": data["status"],
-                "html_bytes": len(data["html"]),
-                "wait_ms": data["waitedMs"],
-                "read_area": dom.get("read"),
-                "like_area": dom.get("like"),
-                "comment_items": dom.get("comments"),
-                "read_num_var": dom.get("readNumVar"),
-                "webdriver": dom.get("webdriver"),
-            }
-        except Exception as exc:
-            out["steps"]["browser"] = f"失败：{type(exc).__name__}: {exc}"
-        finally:
-            bridge.shutdown()
+        from wxrc.browser import fetch_via_browser
+        result = fetch_via_browser(args.url, headless=args.headless)
+        out["steps"]["browser"] = {"status": result[0], "html_bytes": len(result[1])} if result else {"error": "浏览器未能读取页面"}
 
     print(json.dumps(out, ensure_ascii=False, indent=1))
     return 0

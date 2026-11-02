@@ -14,7 +14,6 @@
     article       正文解析（新旧模板 + 懒加载图片）
     textmode      纯文本模式（URL 清单 -> Markdown，零凭证）
     metrics       互动数据（阅读 / 点赞 / 留言，需会话）
-    kernel_bridge 指纹浏览器桥（复用 零一智译 browser-core）
     crawl         编排与落盘
 """
 from .account_pool import Account, AccountPool
@@ -24,7 +23,6 @@ from .crawl import ArchiveJob, ArchiveStats
 from .fingerprint import Device, make_device
 from .getmsg import ArticleRef, Cursor, ProfileCrawler, build_profile_url, parse_getmsg
 from .guard import Risk, Verdict, classify_html, classify_json
-from .kernel_bridge import KernelBridge, make_kernel_hook, profile_id_for
 from .limiter import AdaptivePacer, CircuitBreaker, TokenBucket
 from .metrics import Comment, MetricsClient, Stats, parse_appmsgstat, parse_comments
 from .mp_admin import AdminClient, AdminError, AdminItem, AdminSession
@@ -52,9 +50,6 @@ __all__ = [
     "Verdict",
     "classify_html",
     "classify_json",
-    "KernelBridge",
-    "make_kernel_hook",
-    "profile_id_for",
     "AdaptivePacer",
     "CircuitBreaker",
     "TokenBucket",
@@ -83,4 +78,4 @@ __all__ = [
     "RiskEngine",
 ]
 
-__version__ = "0.1.8"
+__version__ = "0.1.9"

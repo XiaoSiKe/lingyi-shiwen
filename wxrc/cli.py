@@ -18,6 +18,7 @@ from .limiter import AdaptivePacer, CircuitBreaker
 from .proxy_pool import ProxyNode, ProxyPool
 from .session import BreakerOpen, NoIdentity, RiskEngine, RiskEngineError
 from .security import redact
+from .mp_admin import AdminError
 
 CST = timezone(timedelta(hours=8))
 _ACTIVE_ENGINES: list[RiskEngine] = []
@@ -71,7 +72,6 @@ def build_engine(cfg: dict, *, logger=print) -> RiskEngine:
         hook = make_browser_hook(
             bcfg.get("engine", "auto"),
             logger=logger,
-            core_path=bcfg.get("core_path") or None,
             data_root=bcfg.get("data_root") or None,
             headless=bool(bcfg.get("headless", True)),
             chrome=str(bcfg.get("chrome") or ""),
@@ -205,7 +205,7 @@ def cmd_admin_login(args: argparse.Namespace) -> int:
         headless=args.headless,
         timeout_s=float(args.timeout),
         save_path=Path(args.save),
-        core_path=args.core or None,
+        channel=args.browser_channel,
         logger=print,
     )
     if not sess:
@@ -358,7 +358,7 @@ def cmd_text(args: argparse.Namespace) -> int:
     results = run.run(urls, on_item=show)
     ok = sum(1 for r in results if r.ok)
     print(f"\n完成：{ok}/{len(results)} 篇，输出目录 {Path(args.out).resolve()}")
-    return 0 if ok else 1
+    return 0 if results and ok == len(results) else 1
 
 
 def _bare_engine() -> RiskEngine:
@@ -376,7 +376,7 @@ def _bare_engine() -> RiskEngine:
 def cmd_parse(args: argparse.Namespace) -> int:
     raw = Path(args.file).read_text("utf-8", errors="replace")
     art = parse_article(raw, args.url or "")
-    print(json.dumps(art.to_dict(), ensure_ascii=False, indent=1)[:4000])
+    print(json.dumps(art.to_dict(), ensure_ascii=False, indent=1))
     return 0
 
 
@@ -412,10 +412,10 @@ def main(argv: list[str] | None = None) -> int:
 
     al = sub.add_parser("admin-login", help="扫码登录公众号后台，保存 cookie+token")
     al.add_argument("--save", default="./admin.json")
-    al.add_argument("--profile", default="mp-admin", help="指纹浏览器 profile（复用登录态）")
+    al.add_argument("--profile", default="mp-admin", help="浏览器 profile（复用登录态）")
     al.add_argument("--headless", action="store_true", help="默认有头，方便扫码")
     al.add_argument("--timeout", type=float, default=240)
-    al.add_argument("--core", default="", help="browser-core 路径")
+    al.add_argument("--browser-channel", default="chromium", choices=["chromium", "chrome", "msedge"])
     al.set_defaults(func=cmd_admin_login)
 
     ad = sub.add_parser("admin", help="后台发表记录：全量清单 + 阅读/点赞（需登录态）")
@@ -466,7 +466,10 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         return int(args.func(args) or 0)
-    except RiskEngineError as exc:
+    except (ValueError, OSError) as exc:
+        print(redact(f"输入或环境错误：{exc}"), file=sys.stderr)
+        return 2
+    except (RiskEngineError, AdminError) as exc:
         print(redact(f"任务暂停：{exc}"), file=sys.stderr)
         return 3
     finally:

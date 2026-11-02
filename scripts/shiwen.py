@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import shutil
 import sys
 from pathlib import Path
 
@@ -21,12 +20,11 @@ def doctor() -> int:
         "python": sys.version.split()[0],
         "source_root": str(ROOT),
         "dependencies": dependencies,
-        "node": bool(shutil.which("node")),
         "ready": ready,
     }
     if all(dependencies.values()):
-        from wxrc.kernel_bridge import available
-        report["optional_browser_kernel"] = available()
+        from wxrc.browser import playwright_available
+        report["optional_playwright"] = playwright_available()
     if not ready:
         report["next_step"] = "使用 Python 3.10+；在此源码目录的独立虚拟环境中安装 requirements.txt，然后用该环境的 Python 运行本脚本。"
     print(json.dumps(report, ensure_ascii=False, indent=2))

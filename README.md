@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="Skill + Source" src="https://img.shields.io/badge/Skill_+_Source-176B60?style=flat-square">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3B5365?style=flat-square">
-  <img alt="Version 0.1.8" src="https://img.shields.io/badge/version-0.1.8-B3925B?style=flat-square">
+  <img alt="Version 0.1.9" src="https://img.shields.io/badge/version-0.1.9-B3925B?style=flat-square">
 </p>
 
 <p align="center">
@@ -79,7 +79,7 @@ python3 -m venv .venv
 .venv/bin/python scripts/shiwen.py doctor
 ```
 
-Windows 使用 `.venv\Scripts\python.exe` 替换 `.venv/bin/python`。`doctor` 离线检查 Python、运行依赖和可选浏览器内核。
+Windows 使用 `.venv\Scripts\python.exe` 替换 `.venv/bin/python`。`doctor` 离线检查 Python、运行依赖和可选 Playwright 依赖。
 
 ### 3 · 用自然语言调用
 
@@ -117,7 +117,10 @@ archive/
 
 `text` 模式保存为 `账号/日期_标题_唯一标识.md`；`--raw` 将正文 HTML 保存到 `raw/账号/`。两种模式的输出布局详见命令参考。
 
-## ↻ 这一轮完善了什么
+## ↻ 持续完善
+
+**v0.1.9**：浏览器支持统一为 Playwright；修复令牌桶重复记账、长文章 JSON 截断、部分失败退出码和互动数据 HTTP 错误判定。
+
 
 - **恢复更完整**：先保存待处理列表，下游处理完成后确认；页内限额不会丢掉本页剩余文章。
 - **失败可补采**：只有成功归档或确认删除的文章进入完成索引；`meta_only` 在后续运行重试。
@@ -136,7 +139,6 @@ lingyi-shiwen/
 ├── SKILL.md                      # Agent 读取的操作流程
 ├── scripts/shiwen.py              # 与工作目录无关的源码调用入口
 ├── wxrc/                         # 唯一一份 Python 采集核心
-├── bridge/                       # 可选 browser-core 的 Node 桥
 ├── agents/                       # Codex 展示信息
 ├── references/                   # 命令、边界、架构与来源
 ├── tests/                        # 本地模拟与回归用例
@@ -150,12 +152,12 @@ lingyi-shiwen/
 .venv/bin/python -m pytest tests -q
 ```
 
-测试覆盖本地模拟采集与恢复逻辑。真实浏览器内核和真实页面样本缺失时，相应用例会跳过；本地通过不代表微信线上长期采集效果已获验证。
+测试覆盖本地模拟采集与恢复逻辑。浏览器适配层使用离线模拟验证；真实页面样本缺失时，相应用例会跳过；本地通过不代表微信线上长期采集效果已获验证。
 
 ## ♧ 致谢与项目来源
 
 **Spark 是本项目初步雏形的开发者。** 原始采集核心提供了多通道采集、正文解析、账号与出口管理、自适应节流，以及浏览器桥接的基础。本次迭代在其基础上修复可靠性问题，并加入直接调用核心源码的 Skill。
 
-来源与版本记录见 [项目来源](references/origin.md)。可选的「零一智译 browser-core」是外部依赖，不包含在本仓库中；公开正文采集和离线解析无需它，管理员扫码登录需要它。
+来源与版本记录见 [项目来源](references/origin.md)。浏览器兜底与管理员扫码统一使用标准 Playwright。需要时安装 `requirements-browser.txt` 并运行 `python -m playwright install chromium`，也可以选择本机 Chrome 或 Edge。
 
 仓库目前未指定开源许可证。公开源码便于查看与协作，不代表已授予任意再分发或商业使用授权。

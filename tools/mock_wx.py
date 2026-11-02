@@ -22,8 +22,8 @@ VERIFY_HTML = """<html><head><title>环境异常</title></head><body>
 <p>当前环境异常，完成验证后即可继续访问。</p><a href="/mp/verify">去验证</a></div>
 </body></html>"""
 
-PLAIN_HTML = """<html><head><title>wxrc kernel probe</title></head><body>
-<h1 id="plain">wxrc kernel probe</h1>
+PLAIN_HTML = """<html><head><title>shiwen browser probe</title></head><body>
+<h1 id="plain">shiwen browser probe</h1>
 <p>指纹内核连通性探针页</p>
 </body></html>"""
 

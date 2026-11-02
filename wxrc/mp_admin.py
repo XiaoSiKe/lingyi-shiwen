@@ -404,59 +404,45 @@ class AdminError(RuntimeError):
 
 
 # --------------------------------------------------------------------------- #
-# 登录：用指纹浏览器打开后台，人工扫码一次，拿 cookie + token
+# 登录：用标准浏览器打开后台，人工扫码一次，拿 cookie + token
 # --------------------------------------------------------------------------- #
 def login_via_browser(
-    *,
-    profile_key: str = "mp-admin",
-    headless: bool = False,
-    timeout_s: float = 240.0,
-    save_path: str | Path | None = None,
-    core_path: str | Path | None = None,
-    logger=None,
+    *, profile_key: str = "mp-admin", headless: bool = False,
+    timeout_s: float = 240.0, save_path: str | Path | None = None,
+    channel: str = "chromium", logger=None,
 ) -> AdminSession | None:
-    """打开 mp.weixin.qq.com 让管理员扫码；成功后把 cookie/foken 落盘。
-
-    需要 Node + Chrome（复用 零一智译 browser-core）。人工只需扫一次，
-    之后 profile 里保留登录态，可反复 `--reuse-profile` 重新取 token。
-    """
-    from .kernel_bridge import KernelBridge
-
+    """用户在标准浏览器中扫码，持久保存会话；始终关闭浏览器上下文。"""
+    from .browser import playwright_available, profile_directory
+    if not playwright_available():
+        raise AdminError("请安装 requirements-browser.txt 并运行 python -m playwright install chromium")
+    from playwright.sync_api import sync_playwright
     log = logger or (lambda _m: None)
-    bridge = KernelBridge(headless=headless, core_path=core_path, logger=log)
-    try:
-        bridge.open(
-            "https://mp.weixin.qq.com/",
-            profile_key=profile_key,
-            wait_human_ms=0,
-            timeout_ms=30000,
-            total_timeout=180,
+    profile = profile_directory(profile_key)
+    profile.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as pw:
+        ctx = pw.chromium.launch_persistent_context(
+            str(profile), headless=headless, channel=None if channel == "chromium" else channel,
         )
-        deadline = time.time() + float(timeout_s)
-        token = ""
-        while time.time() < deadline:
-            url = bridge.evaluate("location.href") or ""
-            m = re.search(r"[?&]token=(\d+)", url)
-            if m:
-                token = m.group(1)
-                log("[admin] 已登录，已取得后台会话")
-                break
-            time.sleep(2.0)
-        if not token:
-            log("[admin] 超时未检测到 token（未扫码或未进后台）")
+        try:
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
+            page.goto("https://mp.weixin.qq.com/", wait_until="domcontentloaded", timeout=30000)
+            deadline = time.monotonic() + timeout_s
+            while time.monotonic() < deadline:
+                m = re.search(r"[?&]token=(\d+)", page.url)
+                if m:
+                    cookies = ctx.cookies(["https://mp.weixin.qq.com/"])
+                    cookie = "; ".join(f"{c['name']}={c['value']}" for c in cookies if c.get("name"))
+                    sess = AdminSession(cookie=cookie, token=m.group(1), user_agent=page.evaluate("navigator.userAgent"))
+                    if sess.ok:
+                        if save_path:
+                            sess.save(save_path)
+                        log("[admin] 已取得并保存后台会话")
+                        return sess
+                page.wait_for_timeout(1000)
+            log("[admin] 等待扫码超时")
             return None
-        cookies = bridge.cookies(["https://mp.weixin.qq.com"])
-        cookie = "; ".join(f"{c['name']}={c['value']}" for c in cookies if c.get("name"))
-        ua = bridge.evaluate("navigator.userAgent") or ""
-        sess = AdminSession(cookie=cookie, token=token, user_agent=str(ua))
-        if not sess.ok:
-            return None
-        if save_path:
-            sess.save(save_path)
-            log(f"[admin] 登录态已保存：{save_path}")
-        return sess
-    finally:
-        bridge.shutdown()
+        finally:
+            ctx.close()
 
 
 # --------------------------------------------------------------------------- #

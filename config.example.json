@@ -19,7 +19,6 @@
   },
   "browser": {
     "engine": "off",
-    "core_path": "",
     "headless": false,
     "wait_human_ms": 90000
   },

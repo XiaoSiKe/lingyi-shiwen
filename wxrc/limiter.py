@@ -34,13 +34,10 @@ class TokenBucket:
         """返回需要等待的秒数（调用方 sleep）。"""
         with self._lock:
             self._refill()
-            if self._tokens >= tokens:
-                self._tokens -= tokens
-                return 0.0
-            need = tokens - self._tokens
-            self._tokens = 0.0
-            self._ts = time.monotonic()
-            return need / self.rate
+            # 预约的令牌以负余额记账，等待不能再次产生一份免费额度。
+            self._tokens -= tokens
+            return max(0.0, -self._tokens / self.rate)
+
 
 
 @dataclass
