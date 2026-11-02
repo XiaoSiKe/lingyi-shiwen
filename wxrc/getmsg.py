@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from .account_pool import Account
 from .guard import Risk
 from .session import Exhausted, NoIdentity, Reply, RiskEngine
+from .reporting import Coverage
 from .storage import atomic_write
 
 PROFILE_URL = "https://mp.weixin.qq.com/mp/profile_ext"
@@ -221,8 +222,20 @@ class ProfileCrawler:
         self.page_pause = page_pause
         self.cursor = cursor or Cursor()
         self.on_page = on_page
+        self.report = Coverage("client_visible_history")
 
-    def crawl(
+    def crawl(self, *args, **kwargs) -> Iterator[ArticleRef]:
+        self.report = Coverage("client_visible_history")
+        try:
+            yield from self._crawl(*args, **kwargs)
+        except BaseException as exc:
+            self.report.interrupt(exc)
+            raise
+        finally:
+            if self.report.stop_reason == "running":
+                self.report.stop("item_limit")
+
+    def _crawl(
         self,
         biz: str,
         *,
@@ -254,15 +267,27 @@ class ProfileCrawler:
                 state["seen"] = list(dict.fromkeys([*state.get("seen", []), ref.key()]))[-5000:]
                 state["pending"].pop(0)
                 self.cursor.save()
-            if emitted >= limit or state.get("done") or pages >= max_pages:
+            if state.get("done") and not state.get("pending"):
+                reason = state.get("end_reason", "list_end")
+                self.report.stop(reason, complete=reason in ("list_end", "date_boundary"))
+                return
+            if emitted >= limit:
+                self.report.stop("item_limit")
+                return
+            if pages >= max_pages:
+                self.report.stop("page_limit")
                 return
             offset = int(state.get("offset") or 0)
             reply = self._fetch_page(biz, offset)
             if reply.verdict.risk is Risk.GONE:
+                self.report.stop("unavailable")
                 return
             if not reply.verdict.ok:
                 raise Exhausted(reply.attempts, reply)
-            parsed = parse_getmsg(reply.json())
+            payload = reply.json()
+            if not isinstance(payload, dict) or "general_msg_list" not in payload:
+                raise ValueError("历史列表响应缺少 general_msg_list，无法确认采集范围")
+            parsed = parse_getmsg(payload)
             items = parsed["items"]
             new: list[ArticleRef] = []
             page_seen: set[str] = set()
@@ -279,6 +304,8 @@ class ProfileCrawler:
                 new.append(ref)
 
             pages += 1
+            self.report.pages = pages
+            state["end_reason"] = "date_boundary" if reached_old else ("list_end" if not parsed["can_continue"] else "empty_page")
             state["offset"] = parsed["next_offset"] or offset + len(items)
             state["done"] = (not parsed["can_continue"]) or not items or reached_old
             state["pending"] = [ref.to_dict() for ref in new]

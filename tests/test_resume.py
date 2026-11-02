@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 import pytest
 from wxrc.article import Article
+from wxrc.reporting import Coverage
 from wxrc.session import BreakerOpen
 from wxrc.storage import output_lock
 from wxrc.textmode import TextRun
@@ -77,7 +78,7 @@ def test_admin_empty_body_reports_failure(tmp_path,monkeypatch,capsys):
     AdminSession(cookie='synthetic',token='synthetic').save(path)
     item=AdminItem(title='article',url='https://example.invalid')
     monkeypatch.setattr(cli,'_bare_engine',lambda:None)
-    monkeypatch.setattr('wxrc.mp_admin.AdminClient',lambda *a:SimpleNamespace(iter_published=lambda **kw:iter([item])))
+    monkeypatch.setattr('wxrc.mp_admin.AdminClient',lambda *a:SimpleNamespace(iter_published=lambda **kw:iter([item]), report=Coverage('admin_records')))
     monkeypatch.setattr(TextRun,'fetch',lambda *a:(None,'empty body'))
     assert cli.main(['admin','--session',str(path),'--out',str(tmp_path/'out'),'--text'])==1
     assert '"body_failed": 1' in capsys.readouterr().out

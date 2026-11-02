@@ -178,18 +178,57 @@ def text_of(content_html: str) -> str:
 
 def html_to_markdown(content_html: str, base: str = "") -> str:
     frag = lxml_html.fragment_fromstring(content_html, create_parent="div")
+    code_blocks = []
 
     def walk(el) -> str:
         tag = el.tag.lower() if isinstance(el.tag, str) else ""
         if tag in ("script", "style"):
             return ""
+        if tag in ("ul", "ol"):
+            rows = []
+            try:
+                start = int(el.get("start", "1"))
+            except ValueError:
+                start = 1
+            for i, child in enumerate(el.xpath('./li')):
+                body = child.text or ""
+                for part in child:
+                    if isinstance(part.tag, str) and part.tag.lower() in ("ul", "ol"):
+                        body = body.rstrip() + "\n" + walk(part).strip() + "\n" + (part.tail or "")
+                    else:
+                        body += walk(part) + (part.tail or "")
+                prefix = f"{start+i}. " if tag == "ol" else "- "
+                lines = body.strip().splitlines() or [""]
+                rows.append(prefix + lines[0])
+                rows.extend(" " * len(prefix) + line for line in lines[1:])
+            return "\n\n" + "\n".join(rows) + "\n\n"
+        if tag == "table":
+            # 对合并单元格/嵌套表格保留普通文本，避免伪造单元格对应关系。
+            if el.xpath('.//*[@rowspan or @colspan]|.//table'):
+                return "\n\n" + text_of(lxml_html.tostring(el, encoding="unicode")) + "\n\n"
+            rows = []
+            for tr in el.xpath('./tr|./thead/tr|./tbody/tr|./tfoot/tr'):
+                cells = [walk(c).strip().replace("|", "\\|").replace("\n", "<br>") for c in tr.xpath('./th|./td')]
+                if cells:
+                    rows.append(cells)
+            if not rows:
+                return ""
+            width = max(map(len, rows))
+            rows = [r + [""] * (width-len(r)) for r in rows]
+            rendered = ["| " + " | ".join(r) + " |" for r in rows]
+            rendered.insert(1, "| " + " | ".join(["---"] * width) + " |")
+            return "\n\n" + "\n".join(rendered) + "\n\n"
         if tag == "img":
             src = _img_src(el, base)
             return f"\n\n![]({src})\n\n" if src else ""
         if tag == "br":
             return "  \n"
         if tag == "pre":
-            return "\n\n```\n" + "".join(el.itertext()).strip() + "\n```\n\n"
+            code = "".join(el.itertext())
+            fence = "`" * max(3, max((len(m.group()) + 1 for m in re.finditer(r"`+", code)), default=3))
+            key = f"\x00SHIWEN_CODE_{len(code_blocks)}\x00"
+            code_blocks.append((key, fence + "\n" + code + ("" if code.endswith("\n") else "\n") + fence))
+            return "\n\n" + key + "\n\n"
         value = el.text or ""
         for child in el:
             value += walk(child) + (child.tail or "")
@@ -211,7 +250,10 @@ def html_to_markdown(content_html: str, base: str = "") -> str:
             return "\n\n" + value.strip() + "\n\n"
         return value
 
-    return re.sub(r"\n{3,}", "\n\n", walk(frag)).strip()
+    result = re.sub(r"\n{3,}", "\n\n", walk(frag)).strip()
+    for key, code in code_blocks:
+        result = result.replace(key, code)
+    return result
 
 
 def _img_src(img, base: str) -> str:

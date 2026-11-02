@@ -19,6 +19,7 @@ from .getmsg import ArticleRef, Cursor, ProfileCrawler
 from .guard import Risk
 from .metrics import MetricsClient
 from .session import BreakerOpen, NoIdentity, RiskEngine
+from .reporting import Coverage
 from .storage import append_jsonl, atomic_write, stable_id
 
 CST = timezone(timedelta(hours=8))
@@ -43,6 +44,8 @@ class ArchiveStats:
     failed: int = 0
     deleted: int = 0
     started: float = field(default_factory=time.time)
+    stop_reason: str = "running"
+    coverage_complete: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -85,9 +88,42 @@ class ArchiveJob:
                 key = rec.get("key") or rec.get("url")
                 if key:
                     self._records[key] = rec
-        return {key for key, rec in self._records.items() if rec.get("status") in ("ok", "deleted")}
+        known = set()
+        for key, rec in self._records.items():
+            if rec.get("status") == "deleted":
+                known.add(key)
+            elif rec.get("status") == "ok" and rec.get("path"):
+                path = (self.out_dir / rec["path"]).resolve()
+                if path.is_relative_to(self.out_dir.resolve()) and path.is_file():
+                    known.add(key)
+        return known
 
-    def run(
+    def run(self, biz: str, **kwargs) -> ArchiveStats:
+        self._crawler = None
+        self._stats = ArchiveStats()
+        error = None
+        try:
+            result = self._run(biz, **kwargs)
+            return result
+        except BaseException as exc:
+            error = exc
+            raise
+        finally:
+            report = self._crawler.report if self._crawler else Coverage("client_visible_history")
+            if error is not None:
+                report.interrupt(error)
+            elif report.stop_reason == "running":
+                report.stop("item_limit")
+            self._stats.stop_reason = report.stop_reason
+            self._stats.coverage_complete = report.coverage_complete
+            atomic_write(self.out_dir / "collection-report.json", json.dumps({
+                "mode": "update" if kwargs.get("update") else "crawl", "biz": biz,
+                "since": kwargs.get("since", 0), "until": kwargs.get("until", 0),
+                "coverage": report.as_dict(), "stats": self._stats.as_dict(),
+                "archive_complete": report.coverage_complete and self._stats.failed == 0,
+            }, ensure_ascii=False, indent=2))
+
+    def _run(
         self,
         biz: str,
         *,
@@ -96,10 +132,11 @@ class ArchiveJob:
         resume: bool = True,
         since: int = 0,
         until: int = 0,
+        update: bool = False,
     ) -> ArchiveStats:
-        stats = ArchiveStats()
+        stats = self._stats
         # 列表游标可能已结束，失败正文仍须独立补采。
-        for rec in list(self._records.values()):
+        for rec in ([] if update else list(self._records.values())):
             if stats.listed >= limit:
                 return stats
             if rec.get("status") != "meta_only" or rec.get("biz") not in ("", biz):
@@ -114,7 +151,7 @@ class ArchiveJob:
             self._save(ref, art, stats, metrics)
         if stats.listed >= limit:
             return stats
-        cursor = Cursor(self.out_dir / "cursor.json").load()
+        cursor = Cursor(None) if update else Cursor(self.out_dir / "cursor.json").load()
         crawler = ProfileCrawler(
             self.engine,
             cursor=cursor,
@@ -122,8 +159,9 @@ class ArchiveJob:
                 f"[list] 第 {page} 页 +{new} 条（累计 {stats.listed + new}）"
             ),
         )
+        self._crawler = crawler
         for ref in crawler.crawl(
-            biz, limit=limit - stats.listed, max_pages=max_pages, resume=resume, since=since, until=until
+            biz, limit=limit - stats.listed, max_pages=max_pages, resume=resume and not update, since=since, until=until
         ):
             stats.listed += 1
             if ref.key() in self._known:
@@ -138,6 +176,7 @@ class ArchiveJob:
     # ------------------------------------------------------------------ #
     def fetch_article(self, ref: ArticleRef, stats: ArchiveStats) -> Article | None:
         if not ref.url:
+            stats.failed += 1
             return None
         try:
             reply = self.engine.get(

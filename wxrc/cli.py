@@ -18,7 +18,7 @@ from .getmsg import Cursor, ProfileCrawler
 from .limiter import AdaptivePacer, CircuitBreaker
 from .proxy_pool import ProxyNode, ProxyPool
 from .session import BreakerOpen, NoIdentity, RiskEngine, RiskEngineError
-from .storage import output_lock
+from .storage import output_lock, atomic_write
 from .security import redact
 from .mp_admin import AdminError
 
@@ -131,7 +131,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     since = _to_ts(getattr(args, "since", ""), end=False)
     until = _to_ts(getattr(args, "until", ""), end=True)
     if args.dry_run:
-        crawler = ProfileCrawler(engine, cursor=Cursor(Path(args.out) / "cursor.json"))
+        crawler = ProfileCrawler(engine, cursor=Cursor(None))
         n = 0
         try:
             for ref in crawler.crawl(
@@ -143,6 +143,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
             print(f"列表接口需要会话凭证（uin/key/pass_ticket）：{exc}")
             return 3
         print(f"共 {n} 条（dry-run，未抓正文）")
+        print(json.dumps(crawler.report.as_dict(), ensure_ascii=False))
         return 0
 
     job = ArchiveJob(
@@ -159,12 +160,13 @@ def cmd_crawl(args: argparse.Namespace) -> int:
             resume=not args.no_resume,
             since=since,
             until=until,
+            update=args.update,
         )
     except (NoIdentity, BreakerOpen) as exc:
         print(f"列表接口需要会话凭证（uin/key/pass_ticket）：{exc}")
         return 3
     print(json.dumps({"stats": stats.as_dict(), "engine": engine.snapshot()}, ensure_ascii=False, indent=1))
-    return 0
+    return 1 if stats.failed else 0
 
 
 def _to_ts(text: str, *, end: bool) -> int:
@@ -259,6 +261,9 @@ def cmd_admin(args: argparse.Namespace) -> int:
                     f"{rec['publish_date']}  阅读 {item.read_num:>6}  赞 {item.like_num:>4}  "
                     f"{item.title[:36]}"
                 )
+                if text_run is not None and not item.url:
+                    body_failed += 1
+                    continue
                 if text_run is not None and item.url:
                     cached = text_run.cached_result(item.url)
                     if cached:
@@ -275,6 +280,14 @@ def cmd_admin(args: argparse.Namespace) -> int:
         print(f"后台报错：{exc}")
         return 3
 
+    finally:
+        if client.report.stop_reason == "running":
+            client.report.stop("interrupted")
+        atomic_write(out / "collection-report.json", json.dumps({
+            "mode": "admin", "coverage": client.report.as_dict(), "items": n,
+            "body_failed": body_failed, "body_requested": args.text,
+            "archive_complete": bool(args.text and client.report.coverage_complete and not body_failed),
+        }, ensure_ascii=False, indent=2))
     if args.comments:
         rows = client.latest_comments(count=20)
         cpath = out / "admin-comments.jsonl"
@@ -327,6 +340,7 @@ def cmd_search(args: argparse.Namespace) -> int:
             if run is not None and hit.article is not None:
                 run.save(hit.article, hit.url)
 
+    atomic_write(out / "collection-report.json", json.dumps({"mode": "search", **result.summary()}, ensure_ascii=False, indent=2))
     print(json.dumps({"summary": result.summary(), "index": str(index)}, ensure_ascii=False, indent=1))
     return 0 if result.hits else 1
 
@@ -416,6 +430,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--limit", type=int, default=100)
     c.add_argument("--max-pages", type=int, default=50)
     c.add_argument("--dry-run", action="store_true")
+    c.add_argument("--update", action="store_true", help="从最新页检查新增文章，保留历史任务断点")
     c.add_argument("--no-resume", action="store_true")
     c.set_defaults(func=cmd_crawl)
 

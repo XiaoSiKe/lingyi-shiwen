@@ -118,3 +118,26 @@ python scripts/shiwen.py snapshot --config "/私有目录/shiwen-config.json"
 退出码 `0` 表示命令按自身成功规则结束，`1` 为无结果、部分失败或业务失败，`2` 为输入/环境问题，`3` 为会话、配额、熔断或出口等导致的暂停。`crawl` 仍需查看最终 `stats.failed` 和索引状态；退出码不能代替数据完整性报告。
 
 `status=ok` 表示正文可用，`deleted` 表示确认不可用，`meta_only` 表示只留下元信息、需要补采。互动数据同时看 `metrics_ok` 和 `metrics_reason`；数值缺省不等于真实统计为零。
+
+## 增量检查与完整性报告（v0.3.0）
+
+```bash
+python scripts/shiwen.py crawl --config "/私有目录/shiwen-config.json" --update --limit 200 --max-pages 20 --out "/资料/历史归档"
+```
+
+`--update` 每次从最新页重新枚举，在给定日期、条数和页数范围内检查新增内容；已有完整正文跳过，缺失正文重新获取。它使用独立内存游标，不改写历史任务的 `cursor.json`。不会在遇到第一篇旧文章时直接停止，避免中间遗漏。达到上限时需增加范围或继续历史任务，不能声称已覆盖全量。更新模式不优先补采扫描范围外的旧失败记录，原有恢复模式仍负责这些记录。
+
+`crawl`、`admin`、`search` 的输出目录会写入 `collection-report.json`。`coverage.scope` 分别为客户端可见历史、管理员记录和搜索抽样。`coverage_complete` 仅表示本次声明的列表范围扫描完成；`archive_complete` 还要求正文采集未失败。搜索抽样永远不会声明公众号全量覆盖。
+
+| stop_reason | 含义 |
+|---|---|
+| list_end | 接口表明列表已结束 |
+| date_boundary | 已到设定的日期下界 |
+| page_limit / item_limit | 达到本次上限，尚未确认完整 |
+| empty_page | 返回空页但缺少足够的完整性依据 |
+| circuit_open / no_identity | 熔断，或没有可用账号/出口 |
+| login_expired / rate_limited | 后台登录过期或限频 |
+| cancelled / interrupted / error | 取消、中断或其他异常 |
+| search_end / blocked / request_failed | 搜索候选结束、被拦或请求失败；仍然只是抽样 |
+
+`--dry-run` 只输出清单与扫描报告，使用内存游标，不推进已有归档任务。退出码 0 不等同于覆盖全量，需同时查看报告中的停止原因与完整性字段。

@@ -256,7 +256,7 @@ def test_private_session_file_and_redacted_log(tmp_path):
 def test_skill_entry_works_from_other_directory(tmp_path):
     script = Path(__file__).resolve().parents[1] / 'scripts' / 'shiwen.py'
     result = subprocess.run([sys.executable, str(script), '--version'], cwd=tmp_path, text=True, capture_output=True)
-    assert result.returncode == 0 and '零一拾文' in result.stdout and '0.2.0' in result.stdout
+    assert result.returncode == 0 and '零一拾文' in result.stdout and '0.3.0' in result.stdout
     html = tmp_path / 'article.html'
     html.write_text('<h1 id="activity-name">离线文章</h1><div id="js_content">正文</div>')
     parsed = subprocess.run([sys.executable, str(script), 'parse', '--file', str(html)], cwd=tmp_path, text=True, capture_output=True)

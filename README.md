@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="Skill + Source" src="https://img.shields.io/badge/Skill_+_Source-176B60?style=flat-square">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3B5365?style=flat-square">
-  <img alt="Version 0.2.0" src="https://img.shields.io/badge/version-0.2.0-B3925B?style=flat-square">
+  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-B3925B?style=flat-square">
 </p>
 
 <p align="center">
@@ -118,6 +118,8 @@ archive/
 `text` 模式保存为 `账号/日期_标题_唯一标识.md`；`--raw` 将正文 HTML 保存到 `raw/账号/`。两种模式的输出布局详见命令参考。
 
 ## ↻ 持续完善
+
+**v0.3.0**：增加采集范围与停止原因报告、从最新页检查的增量模式，以及表格、嵌套列表、代码块的解析回归。真实探测和合成样本的验证范围见 [验证记录](references/verification.md)。
 
 **v0.2.0**：链接批量任务支持成功去重、失败与中断恢复、产物缺失补采、强制刷新和输出目录互斥；后台正文复用同一归档入口，浏览器诊断新增 `doctor --browser`。
 

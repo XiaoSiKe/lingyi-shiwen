@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 from .article import Article, parse_article
 from .resolve import SOGOU_REFERER, decode_sogou_hop, parse_sogou_links
 from .session import RiskEngine
+from .reporting import Coverage
 
 SOGOU_SEARCH = "https://weixin.sogou.com/weixin"
 
@@ -80,9 +81,11 @@ class SearchRun:
     other_account: int = 0
     out_of_range: int = 0
     no_date: int = 0
+    coverage: Coverage = field(default_factory=lambda: Coverage("search_sample"))
 
     def summary(self) -> dict:
         return {
+            "coverage": self.coverage.as_dict(),
             "hits": len(self.hits),
             "pages": self.pages,
             "links": self.links,
@@ -113,6 +116,7 @@ def search_articles(
     log = logger or engine.log
     run = SearchRun()
     if not _norm(name):
+        run.coverage.stop("invalid_input")
         return run
 
     seen: set[str] = set()
@@ -126,18 +130,22 @@ def search_articles(
                 max_attempts=2,
             )
         except Exception as exc:
+            run.coverage.stop("request_failed")
             log(f"[search] 第 {page} 页失败：{exc}")
             break
         if not resp.verdict.ok:
+            run.coverage.stop("blocked")
             log(f"[search] 第 {page} 页被拦：{resp.verdict.reason}")
             break
 
         origin = f"{urlparse(search_url).scheme}://{urlparse(search_url).netloc}"
         links = [_abs_link(search_url, h) for h in parse_sogou_links(resp.text, origin)][:per_page]
         if not links:
+            run.coverage.stop("search_end")
             log(f"[search] 第 {page} 页无结果，停止")
             break
         run.pages += 1
+        run.coverage.pages = run.pages
         run.links += len(links)
 
         page_hits = 0
@@ -197,4 +205,6 @@ def search_articles(
         log(f"[search] 第 {page} 页：{len(links)} 条链接，命中 {page_hits} 篇（累计 {len(run.hits)}）")
         engine.sleep(engine.rng.uniform(*pause))
 
+    if run.coverage.stop_reason == "running":
+        run.coverage.stop("page_limit")
     return run

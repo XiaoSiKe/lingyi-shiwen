@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .session import RiskEngine
+from .reporting import Coverage
 from .storage import atomic_write
 
 CST = timezone(timedelta(hours=8))
@@ -293,6 +294,7 @@ class AdminClient:
         self.engine = engine
         self.session = session
         self.page_size = page_size
+        self.report = Coverage("admin_records")
 
     def _headers(self) -> dict[str, str]:
         h = {
@@ -361,7 +363,18 @@ class AdminClient:
         )
         return parse_comments_page(reply.text or "")
 
-    def iter_published(
+    def iter_published(self, **kwargs) -> Iterator[AdminItem]:
+        self.report = Coverage("admin_records")
+        try:
+            yield from self._iter_published(**kwargs)
+        except BaseException as exc:
+            self.report.interrupt(exc)
+            raise
+        finally:
+            if self.report.stop_reason == "running":
+                self.report.stop("page_limit")
+
+    def _iter_published(
         self,
         *,
         max_pages: int = 20,
@@ -373,11 +386,15 @@ class AdminClient:
         seen: set[str] = set()
         for page in range(max_pages):
             text, ret, total, items = self.fetch_page(begin)
+            self.report.pages += 1
             if ret == RET_EXPIRED:
                 raise AdminError("后台登录失效 ret=200003，请重新扫码登录", expired=True)
             if ret == RET_RATE:
                 raise AdminError("后台限频 ret=200013，等 10~30 分钟再试", rate_limited=True)
+            if ret:
+                raise AdminError(f"后台接口错误 ret={ret}")
             if not items:
+                self.report.stop("empty_page")
                 return
             new = 0
             for item in items:
@@ -385,13 +402,15 @@ class AdminClient:
                     continue
                 seen.add(item.key())
                 if since and item.publish_ts and item.publish_ts < since:
-                    return                       # 后台按时间倒序
+                    self.report.stop("date_boundary", complete=True)
+                    return
                 if until and item.publish_ts and item.publish_ts > until:
                     continue
                 new += 1
                 yield item
             begin += self.page_size
             if total and begin >= total:
+                self.report.stop("list_end", complete=True)
                 return
             self.engine.sleep(self.engine.rng.uniform(*pause))
 
