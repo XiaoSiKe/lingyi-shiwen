@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="Skill + Source" src="https://img.shields.io/badge/Skill_+_Source-176B60?style=flat-square">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3B5365?style=flat-square">
-  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-B3925B?style=flat-square">
+  <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-B3925B?style=flat-square">
 </p>
 
 <p align="center">
@@ -48,6 +48,7 @@
 
 | 你手上有什么 | 使用方式 | 可获得的内容 | 范围说明 |
 |---|---|---|---|
+| 合集分享链接或合集 ID + 公众号标识 | `album` | 合集清单与当前可访问的文章正文 | 按结束标志翻页，总数不符或到达上限时明确标记未完成 |
 | 一篇或一批文章链接 | `text` | 正文、图片链接、基础元信息 | 无需客户端凭证；受文章可访问性影响 |
 | 公众号名称 | `search` | 搜索命中的文章，可按日期筛选 | 搜索抽样，不能保证全量 |
 | 客户端会话配置 | `crawl` | 客户端可见历史、正文，可选互动数据 | 受会话有效期、配额和可见范围限制 |
@@ -118,6 +119,8 @@ archive/
 `text` 模式保存为 `账号/日期_标题_唯一标识.md`；`--raw` 将正文 HTML 保存到 `raw/账号/`。两种模式的输出布局详见命令参考。
 
 ## ↻ 持续完善
+
+**v0.4.0**：新增 `album` 合集入口，自动翻页、跨页去重、正文归档、断点恢复、失败补采与完整性报告；用合集分享链接直接指定目标。详见 [合集采集](references/album.md)。
 
 **v0.3.0**：增加采集范围与停止原因报告、从最新页检查的增量模式，以及表格、嵌套列表、代码块的解析回归。真实探测和合成样本的验证范围见 [验证记录](references/verification.md)。
 

@@ -30,3 +30,6 @@ raw.json
 .shiwen.lock
 run-report.json
 collection-report.json
+album-state.json
+album-index.json
+目录.md

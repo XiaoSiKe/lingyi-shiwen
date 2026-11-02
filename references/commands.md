@@ -141,3 +141,7 @@ python scripts/shiwen.py crawl --config "/私有目录/shiwen-config.json" --upd
 | search_end / blocked / request_failed | 搜索候选结束、被拦或请求失败；仍然只是抽样 |
 
 `--dry-run` 只输出清单与扫描报告，使用内存游标，不推进已有归档任务。退出码 0 不等同于覆盖全量，需同时查看报告中的停止原因与完整性字段。
+
+## 指定合集（v0.4.0）
+
+使用 `album --url "合集分享链接" --out "独立目录"` 自动枚举并归档合集。完整参数、恢复方式、完整性判定与协议来源见 [合集采集](album.md)。

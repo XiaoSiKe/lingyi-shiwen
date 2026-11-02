@@ -345,6 +345,19 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0 if result.hits else 1
 
 
+def cmd_album(args: argparse.Namespace) -> int:
+    from .album import AlbumJob, AlbumTarget
+    target = AlbumTarget.from_url(args.url) if args.url else AlbumTarget(args.biz or "", args.album_id or "")
+    cfg = load_config(Path(args.config)) if args.config else {}
+    engine = build_engine(cfg) if cfg else _bare_engine()
+    job = AlbumJob(engine, args.out, target, save_raw=args.raw, expected_title=args.expect_title)
+    result = job.run(max_pages=args.max_pages, max_articles=args.max_articles,
+                     list_only=args.list_only, restart=args.restart)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    success = result["coverage"]["coverage_complete"] if args.list_only else result["archive_complete"]
+    return 0 if success else 1
+
+
 def cmd_text(args: argparse.Namespace) -> int:
     """只抓正文：吃 URL 清单，不需要公众号凭证。"""
     cfg = load_config(Path(args.config)) if args.config else {}
@@ -478,6 +491,21 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--max-hits", dest="max_hits", type=int, default=5)
     r.add_argument("--config", default="")
     r.set_defaults(func=cmd_resolve)
+
+    album = sub.add_parser("album", help="指定合集，自动翻页并归档全部可访问文章")
+    identity = album.add_mutually_exclusive_group(required=True)
+    identity.add_argument("--url", help="合集分享链接")
+    identity.add_argument("--album-id", help="数字合集 ID，需同时提供 --biz")
+    album.add_argument("--biz", default="")
+    album.add_argument("--expect-title", default="", help="可选：校验合集标题，防止抓错")
+    album.add_argument("--config", default="")
+    album.add_argument("--out", required=True, help="独立的合集归档目录")
+    album.add_argument("--raw", action="store_true")
+    album.add_argument("--list-only", action="store_true", help="只枚举清单，保留后续正文任务")
+    album.add_argument("--restart", action="store_true", help="重新枚举合集，复用正文成功索引")
+    album.add_argument("--max-pages", type=int, default=10000)
+    album.add_argument("--max-articles", type=int, default=0, help="本次正文处理上限；0 表示不限制")
+    album.set_defaults(func=cmd_album)
 
     t = sub.add_parser("text", help="只抓正文文本（URL 清单，不需凭证）")
     t.add_argument("--url", action="append", default=[], help="可重复")
