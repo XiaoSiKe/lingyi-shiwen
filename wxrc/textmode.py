@@ -169,6 +169,8 @@ class TextRun:
     def _report(self, pending: list[str], state: str) -> None:
         atomic_write(self.report_path, json.dumps({
             "state": state,
+            "save_raw": self.save_raw,
+            "force": self.force,
             "successful": sum(r.ok and not r.skipped for r in self.results),
             "skipped": sum(r.skipped for r in self.results),
             "failed": sum(not r.ok for r in self.results),
@@ -178,6 +180,8 @@ class TextRun:
 
     def retry_urls(self) -> list[str]:
         report = json.loads(self.report_path.read_text("utf-8"))
+        self.save_raw = self.save_raw or bool(report.get("save_raw", False))
+        self.force = self.force or bool(report.get("force", False))
         return list(dict.fromkeys([
             *[r["url"] for r in report.get("results", []) if not r.get("ok")],
             *report.get("pending", []),

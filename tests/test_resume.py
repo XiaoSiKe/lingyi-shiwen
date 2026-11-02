@@ -91,3 +91,15 @@ def test_retry_completed_task_is_success(tmp_path,monkeypatch):
     run.run(['u'])
     monkeypatch.setattr(cli,'_bare_engine',lambda:None)
     assert cli.main(['text','--out',str(tmp_path),'--retry-failed'])==0
+
+
+def test_retry_preserves_original_output_options(tmp_path,monkeypatch):
+    first=runner(tmp_path,save_raw=True,force=True)
+    monkeypatch.setattr(first,'fetch',lambda u:(None,'failed'))
+    first.run(['u'])
+    resumed=runner(tmp_path)
+    assert resumed.retry_urls()==['u']
+    assert resumed.save_raw and resumed.force
+    monkeypatch.setattr(resumed,'fetch',lambda u:(article(),''))
+    resumed.run(['u'])
+    assert len(list((tmp_path/'raw').rglob('*.html')))==1
